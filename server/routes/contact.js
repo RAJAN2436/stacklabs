@@ -22,7 +22,10 @@ const validateContact = [
 
 // ── Email helper ──────────────────────────────────────────────
 async function sendNotificationEmail(contact) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn('⚠️  Email credentials not configured. Email notifications disabled.');
+    return;
+  }
 
   const transporter = nodemailer.createTransport({
     host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
@@ -34,33 +37,38 @@ async function sendNotificationEmail(contact) {
     },
   });
 
-  await transporter.sendMail({
-    from:    `"StackLabs" <${process.env.EMAIL_USER}>`,
-    to:      process.env.NOTIFY_EMAIL || process.env.EMAIL_USER,
-    subject: `🚀 New Client Inquiry: ${contact.name} — ${contact.service}`,
-    html: `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-        <div style="background:#FFD600;padding:20px 30px">
-          <h1 style="margin:0;color:#0A0A0A;font-size:22px">New Client Inquiry</h1>
-        </div>
-        <div style="background:#f9f9f9;padding:30px">
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="padding:8px 0;color:#666;width:120px"><strong>Name</strong></td><td>${contact.name}</td></tr>
-            <tr><td style="padding:8px 0;color:#666"><strong>Email</strong></td><td><a href="mailto:${contact.email}">${contact.email}</a></td></tr>
-            <tr><td style="padding:8px 0;color:#666"><strong>Service</strong></td><td>${contact.service}</td></tr>
-            <tr><td style="padding:8px 0;color:#666"><strong>Budget</strong></td><td>${contact.budget || 'Not specified'}</td></tr>
-          </table>
-          <div style="margin-top:20px">
-            <strong style="color:#666">Message:</strong>
-            <p style="background:#fff;border-left:4px solid #ff0000;padding:15px;margin-top:8px">${contact.message}</p>
+  try {
+    await transporter.sendMail({
+      from:    `"StackLabs" <${process.env.EMAIL_USER}>`,
+      to:      process.env.NOTIFY_EMAIL || process.env.EMAIL_USER,
+      subject: `🚀 New Client Inquiry: ${contact.name} — ${contact.service}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+          <div style="background:#FFD600;padding:20px 30px">
+            <h1 style="margin:0;color:#0A0A0A;font-size:22px">New Client Inquiry</h1>
+          </div>
+          <div style="background:#f9f9f9;padding:30px">
+            <table style="width:100%;border-collapse:collapse">
+              <tr><td style="padding:8px 0;color:#666;width:120px"><strong>Name</strong></td><td>${contact.name}</td></tr>
+              <tr><td style="padding:8px 0;color:#666"><strong>Email</strong></td><td><a href="mailto:${contact.email}">${contact.email}</a></td></tr>
+              <tr><td style="padding:8px 0;color:#666"><strong>Service</strong></td><td>${contact.service}</td></tr>
+              <tr><td style="padding:8px 0;color:#666"><strong>Budget</strong></td><td>${contact.budget || 'Not specified'}</td></tr>
+            </table>
+            <div style="margin-top:20px">
+              <strong style="color:#666">Message:</strong>
+              <p style="background:#fff;border-left:4px solid #ff0000;padding:15px;margin-top:8px">${contact.message}</p>
+            </div>
+          </div>
+          <div style="background:#0A0A0A;padding:15px 30px;text-align:center">
+            <p style="color:#fff;font-size:12px;margin:0">StackLabs — stacklabs.dev</p>
           </div>
         </div>
-        <div style="background:#0A0A0A;padding:15px 30px;text-align:center">
-          <p style="color:#fff;font-size:12px;margin:0">StackLabs — stacklabs.dev</p>
-        </div>
-      </div>
-    `,
-  });
+      `,
+    });
+    console.log(`✅ Email sent to ${process.env.NOTIFY_EMAIL || process.env.EMAIL_USER}`);
+  } catch (err) {
+    console.error('❌ Email send failed:', err.message);
+  }
 }
 
 // ── POST /api/contact ─────────────────────────────────────────
@@ -80,6 +88,8 @@ router.post('/', contactLimiter, validateContact, async (req, res) => {
       ipAddress: req.ip,
     });
 
+    console.log(`✅ Contact submitted: ${contact._id} from ${email}`);
+
     // Send email notification (non-blocking)
     sendNotificationEmail(contact).catch(err =>
       console.error('Email notification failed:', err.message)
@@ -91,8 +101,17 @@ router.post('/', contactLimiter, validateContact, async (req, res) => {
       id: contact._id,
     });
   } catch (err) {
-    console.error('Contact submission error:', err);
-    res.status(500).json({ success: false, message: 'Server error. Please try again.' });
+    console.error('❌ Contact submission error:', err.message);
+    
+    // Provide more specific error messages
+    let errorMsg = 'Server error. Please try again.';
+    if (err.message.includes('E11000')) {
+      errorMsg = 'This email has already been submitted. Please use a different email or try again later.';
+    } else if (err.message.includes('validation failed')) {
+      errorMsg = 'Please check your input and try again.';
+    }
+    
+    res.status(500).json({ success: false, message: errorMsg });
   }
 });
 

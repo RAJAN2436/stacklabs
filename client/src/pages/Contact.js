@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import api from '../config/api';
 import toast from 'react-hot-toast';
 import { Mail, MapPin, Clock } from 'lucide-react';
 
@@ -20,11 +20,16 @@ export default function Contact() {
     }
     setLoading(true);
     try {
-      await axios.post('/api/contact', form);
-      toast.success('Message sent! We\'ll reply within 24 hours.');
+      const response = await api.post('/api/contact', form);
+      toast.success(response.data.message || 'Message sent! We\'ll reply within 24 hours.');
       setForm({ name: '', email: '', service: '', budget: '', message: '' });
     } catch (err) {
-      toast.error('Something went wrong. Please try again.');
+      const errorMsg = err.response?.data?.message || 
+                       err.response?.data?.errors?.[0]?.msg ||
+                       err.message || 
+                       'Unable to connect to server. Please ensure the server is running on localhost:5000';
+      console.error('Contact submission error:', err);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
